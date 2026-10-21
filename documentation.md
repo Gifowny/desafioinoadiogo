@@ -96,16 +96,28 @@ O `--` separa os argumentos do `dotnet` dos argumentos do programa.
 
 ---
 
-### Passo 3 — Refatoração da validação (em andamento)
+### Passo 3 — Refatoração da validação
 
 - **Motivação:** com todo o código no `Program.cs`, o arquivo cresceria demais com a API de cotação, o envio de e-mail e o loop de monitoramento. Além disso, código solto no `Program.cs` não pode ser coberto por testes unitários.
-- **Plano:**
-  - criar um `record MonitorArguments(string Ticker, decimal PrecoVenda, decimal PrecoCompra)`, imutável, para guardar os dados validados;
-  - mover a validação para um método `static Parse(string[] args)` dentro do record;
-  - substituir `Console.Error.WriteLine` + `return 1` por `throw new ArgumentException(...)`, já que encerrar o programa é responsabilidade do `Program.cs`, não da classe;
-  - o `Program.cs` passa a apenas orquestrar, chamando `MonitorArguments.Parse` dentro de um `try/catch`.
-- **Critério de sucesso:** os mesmos testes manuais do Passo 2 devem produzir saídas idênticas (refatoração muda a organização, não o comportamento).
+- Criado o arquivo `MonitorArguments.cs` com um `record MonitorArguments(string Ticker, decimal PrecoVenda, decimal PrecoCompra)`:
+  - `record` foi escolhido por ser imutável: os preços de referência não podem ser alterados por engano durante a execução;
+  - a validação foi movida para o método `static Parse(string[] args)`, que devolve os dados prontos.
+- Os erros passaram a ser sinalizados com `throw new ArgumentException(...)` em vez de `Console.Error.WriteLine` + `return 1`.
+- **Separação de responsabilidades:** a classe apenas valida e lança a exceção; imprimir a mensagem e encerrar o programa é responsabilidade do `Program.cs`. Uma primeira versão imprimia o erro dentro da classe e também no `Program.cs`, o que duplicaria a mensagem; a impressão foi removida da classe.
+- O `Program.cs` foi reduzido a um orquestrador: chama `MonitorArguments.Parse` dentro de um `try/catch` e, em caso de `ArgumentException`, exibe a mensagem em stderr e sai com código `1`.
+- **Validação:** os 8 testes manuais do Passo 2 foram repetidos e produziram saídas idênticas, confirmando que a refatoração não alterou o comportamento.
 
+### Passo 4 — Consulta de cotação
+
+- API escolhida: **brapi.dev**, especializada em ativos da B3. Os ativos PETR4, VALE3, MGLU3 e ITUB4 funcionam sem token, o que facilita testes; no plano gratuito as cotações têm atraso de cerca de 15 minutos.
+- Endpoint: `GET https://brapi.dev/api/quote/{ticker}`. O preço fica em `results[0].regularMarketPrice`.
+- Modelos de desserialização em `BrapiModels.cs`:
+  - `BrapiResponse(BrapiQuote[] Results)` representa a raiz do JSON;
+  - `BrapiQuote(string Symbol, decimal RegularMarketPrice, DateTimeOffset RegularMarketTime)` representa cada ativo.
+- Apenas os campos necessários foram declarados (princípio **YAGNI**). Máxima e mínima do dia foram consideradas para o corpo do e-mail, mas ficaram de fora por enquanto.
+- Array em vez de `List`, já que a coleção só é lida.
+- Propriedades em PascalCase, seguindo a convenção do C#; a leitura do JSON (em camelCase) será configurada para ignorar diferença de maiúsculas/minúsculas.
+- `DateTimeOffset` para o horário da cotação, preservando o fuso horário informado pela API.
 ---
 
 ## Commits
@@ -116,3 +128,4 @@ O `--` separa os argumentos do `dotnet` dos argumentos do programa.
 | `feat: leitura dos argumentos da linha de comando` | Leitura e validação da quantidade de argumentos |
 | `fix: rejeita vírgula como separador decimal nos preços` | Correção do bug `22,67` → `2267` |
 | `feat: validação das regras dos argumentos` | Preços positivos, venda > compra, ticker em maiúsculas |
+| `refactor: extrai validação de argumentos para classe própria` | Validação movida para `MonitorArguments`; `Program.cs` vira orquestrador |
