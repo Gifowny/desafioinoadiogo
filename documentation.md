@@ -118,7 +118,13 @@ O `--` separa os argumentos do `dotnet` dos argumentos do programa.
 - Array em vez de `List`, já que a coleção só é lida.
 - Propriedades em PascalCase, seguindo a convenção do C#; a leitura do JSON (em camelCase) será configurada para ignorar diferença de maiúsculas/minúsculas.
 - `DateTimeOffset` para o horário da cotação, preservando o fuso horário informado pela API.
----
+- Criado o modelo de domínio `Quote(string Ticker, decimal Price, DateTimeOffset Time)`, independente da brapi. O restante do programa trabalha apenas com `Quote`, e não com os tipos específicos da API.
+- Criada a interface `IQuoteProvider` com o método `Task<Quote> GetQuoteAsync(string ticker, CancellationToken cancellationToken = default)`:
+  - permite trocar a fonte de cotações sem alterar o restante do código;
+  - permite criar um provedor falso nos testes unitários, sem depender da internet;
+  - `CancellationToken` para interromper requisições em andamento (será ligado ao Ctrl+C).
+- **Decisão de nomenclatura:** código em inglês (padrão da linguagem e do mercado); textos exibidos ao usuário em português.
+- **Erro encontrado:** uma primeira versão do `Quote.cs` continha variáveis soltas em vez de um `record`. Como só um arquivo do projeto pode ter *top-level statements* (o `Program.cs`), o compilador acusou erro e a extensão do VS Code passou a marcar erros falsos em outros arquivos. Também havia um namespace incorreto (`IQuoteProvider` em vez de `StockQuoteAlert`). O `dotnet build` foi usado para identificar os erros reais.
 
 ## Commits
 
