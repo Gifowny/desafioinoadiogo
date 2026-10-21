@@ -19,9 +19,20 @@ if (!decimal.TryParse(args[2], NumberStyles.AllowDecimalPoint, CultureInfo.Invar
     return 1;
 }
 
-Console.WriteLine($"Recebi {args.Length} argumentos");
-Console.WriteLine($"Ativo: {args[0]}");
-Console.WriteLine($"Venda: {precoVenda}");
-Console.WriteLine($"Compra: {precoCompra}");
+if (precoVenda <= 0 || precoCompra <= 0)
+{
+    Console.Error.WriteLine("Os preços devem ser maiores que zero.");
+    return 1;
+}
+
+if (precoVenda <= precoCompra)
+{
+    Console.Error.WriteLine("O preço de venda deve ser maior que o preço de compra.");
+    return 1;
+}
+string ticker = args[0].ToUpperInvariant();
+
+Console.WriteLine($"Monitorando {ticker} | venda > {precoVenda} | compra < {precoCompra}");
+
 return 0;
 
