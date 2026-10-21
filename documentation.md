@@ -133,6 +133,41 @@ O `--` separa os argumentos do `dotnet` dos argumentos do programa.
   - `JsonSerializerDefaults.Web` para aceitar o camelCase do JSON nas propriedades em PascalCase;
   - valida a resposta com *pattern matching* (`response?.Results is not { Length: > 0 }`), cobrindo resposta nula e lista vazia em uma única condição, e lança `InvalidOperationException` com mensagem clara;
   - converte `BrapiQuote` em `Quote`, mantendo os tipos da brapi isolados dentro do provedor.
+  - O `Program.cs` passou a buscar e exibir a cotação atual:
+  - `using var` no `HttpClient` para liberar os recursos de rede ao final;
+  - a variável é declarada com o tipo da interface (`IQuoteProvider`), de modo que o programa depende apenas do contrato;
+  - horário convertido de UTC para o fuso local (`ToLocalTime()`) e formatado no padrão brasileiro;
+  - `catch ... when` captura apenas os erros esperados (`HttpRequestException`, `InvalidOperationException`); erros inesperados não são escondidos.
+
+**Testes manuais:**
+
+| Entrada | Resultado |
+|---|---|
+| `PETR4 58.30 58.10` | `PETR4: R$ 57.75 (negociado em ... 18:30:30)` |
+| `XXXX9 58.30 58.10` | `Erro ao buscar cotação: ... 401 (Unauthorized)` |
+
+- **Achado:** sem token, a brapi responde 401 para qualquer ativo fora dos quatro gratuitos (PETR4, VALE3, MGLU3, ITUB4). Assim, não é possível distinguir um ticker inexistente de um ticker que exige autenticação, e a mensagem exibida é técnica e em inglês. **Encaminhamento:** token opcional na configuração e mensagens amigáveis por código HTTP (Passo 5).
+- **Limitação observada:** fora do horário de pregão o preço não se altera; no plano gratuito há também atraso de cerca de 15 minutos.
+- Implementado o monitoramento contínuo:
+  - `PeriodicTimer` com intervalo de 10 segundos (fixo por enquanto; será movido para a configuração);
+  - `do ... while` para que a primeira busca aconteça imediatamente, sem esperar o primeiro intervalo;
+  - `CancellationTokenSource` + `Console.CancelKeyPress` para encerramento limpo com Ctrl+C: o evento cancela o token em vez de matar o processo, o `PeriodicTimer` lança `OperationCanceledException` e o programa sai com a mensagem "Monitoramento encerrado." e código 0;
+  - o mesmo token é repassado ao `GetQuoteAsync`, permitindo interromper uma requisição em andamento.
+- **Decisão:** falhas na busca (rede, API) não encerram o programa. O erro é exibido e uma nova tentativa ocorre na próxima batida do timer, já que em monitoramento contínuo uma falha momentânea não deve interromper o serviço.
+- **Bug corrigido:** uma primeira versão tinha um `do ... while` dentro do `catch`. Após o primeiro erro, o programa ficava preso repetindo a mesma mensagem e nunca voltava a buscar a cotação. O laço interno foi removido: o `catch` apenas exibe o erro e o laço externo cuida das novas tentativas.
+- `catch (Exception)` substituído por `catch ... when (HttpRequestException or InvalidOperationException)`, para que o cancelamento por Ctrl+C durante uma requisição não seja tratado como erro de cotação e bugs não sejam escondidos.
+
+**Teste de resiliência (Wi-Fi desligado e religado durante a execução):**
+
+```
+PETR4: R$ 57.75 (negociado em 21/10/2026 18:30:30)
+Erro ao obter a cotação: An error occurred while sending the request.
+Erro ao obter a cotação: No such host is known. (brapi.dev:443)
+Erro ao obter a cotação: No such host is known. (brapi.dev:443)
+PETR4: R$ 57.75 (negociado em 21/10/2026 18:30:30)
+PETR4: R$ 57.75 (negociado em 21/10/2026 18:30:30)
+Monitoramento encerrado.
+```
 ## Commits
 
 | Commit | Descrição |
@@ -142,3 +177,4 @@ O `--` separa os argumentos do `dotnet` dos argumentos do programa.
 | `fix: rejeita vírgula como separador decimal nos preços` | Correção do bug `22,67` → `2267` |
 | `feat: validação das regras dos argumentos` | Preços positivos, venda > compra, ticker em maiúsculas |
 | `refactor: extrai validação de argumentos para classe própria` | Validação movida para `MonitorArguments`; `Program.cs` vira orquestrador |
+| `Fix: Adicionando progresso do documentation.md` | Adicionando comentarios do commit passado (tinha esquecido)
