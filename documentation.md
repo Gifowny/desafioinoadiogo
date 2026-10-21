@@ -125,7 +125,14 @@ O `--` separa os argumentos do `dotnet` dos argumentos do programa.
   - `CancellationToken` para interromper requisições em andamento (será ligado ao Ctrl+C).
 - **Decisão de nomenclatura:** código em inglês (padrão da linguagem e do mercado); textos exibidos ao usuário em português.
 - **Erro encontrado:** uma primeira versão do `Quote.cs` continha variáveis soltas em vez de um `record`. Como só um arquivo do projeto pode ter *top-level statements* (o `Program.cs`), o compilador acusou erro e a extensão do VS Code passou a marcar erros falsos em outros arquivos. Também havia um namespace incorreto (`IQuoteProvider` em vez de `StockQuoteAlert`). O `dotnet build` foi usado para identificar os erros reais.
-
+- Implementado o `BrapiQuoteProvider`, que cumpre o contrato `IQuoteProvider`:
+  - recebe o `HttpClient` pelo construtor (**injeção de dependência**), em vez de criá-lo internamente; quem usa a classe decide qual cliente HTTP passar;
+  - usa construtor primário (`class BrapiQuoteProvider(HttpClient httpClient)`), sintaxe moderna do C#;
+  - monta a URL com `Uri.EscapeDataString(ticker)` para evitar que caracteres especiais quebrem a requisição;
+  - usa `GetFromJsonAsync<BrapiResponse>` para fazer a requisição e desserializar o JSON em uma única chamada;
+  - `JsonSerializerDefaults.Web` para aceitar o camelCase do JSON nas propriedades em PascalCase;
+  - valida a resposta com *pattern matching* (`response?.Results is not { Length: > 0 }`), cobrindo resposta nula e lista vazia em uma única condição, e lança `InvalidOperationException` com mensagem clara;
+  - converte `BrapiQuote` em `Quote`, mantendo os tipos da brapi isolados dentro do provedor.
 ## Commits
 
 | Commit | Descrição |
