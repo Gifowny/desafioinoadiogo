@@ -168,6 +168,28 @@ PETR4: R$ 57.75 (negociado em 21/10/2026 18:30:30)
 PETR4: R$ 57.75 (negociado em 21/10/2026 18:30:30)
 Monitoramento encerrado.
 ```
+---
+
+## Fase 2 — Núcleo
+
+### Passo 5 — Arquivo de configuração
+
+- Código padronizado em inglês com o "renomear símbolo" (F2) do VS Code: `PrecoVenda`/`PrecoCompra` → `SellPrice`/`BuyPrice`. Mensagens ao usuário seguem em português.
+- Pacotes adicionados: `Microsoft.Extensions.Configuration.Json`, `.Binder`, `.UserSecrets` e `.EnvironmentVariables`.
+- `appsettings.json` com quatro seções:
+  - `Email:To`: destinatário dos alertas (exigido pelo enunciado);
+  - `Smtp`: `Host`, `Port`, `Username` e `Password` do servidor de envio (exigido pelo enunciado);
+  - `Brapi:Token`: token opcional da API de cotação;
+  - `Monitor:IntervalSeconds`: intervalo entre consultas.
+- O arquivo é copiado para a pasta de saída (`CopyToOutputDirectory`) e lido a partir de `AppContext.BaseDirectory`, para funcionar independentemente da pasta de onde o programa é executado.
+- **Configuração em camadas** com `ConfigurationBuilder`, em que cada camada sobrescreve a anterior:
+  1. `appsettings.json` (versionado, sem segredos);
+  2. user-secrets (segredos locais, fora do repositório);
+  3. variáveis de ambiente com prefixo `STOCKALERT_` (ex.: `STOCKALERT_Smtp__Password`).
+- Classes de configuração em `AppSettings.cs`, preenchidas pelo *binder* (`configuration.Get<AppSettings>()`). Usam `class` com `get; set;` em vez de `record` porque o binder preenche as propriedades depois de criar o objeto. Os valores após `=` são padrões usados quando o campo está ausente.
+- **Validação** em `AppSettings.Validate()`, que devolve uma **lista** de erros em vez de lançar exceção no primeiro problema, para que o usuário veja todos os campos a corrigir de uma vez. Regras: e-mail de destino com `@`, host e usuário preenchidos, porta entre 1 e 65535, senha preenchida e intervalo de no mínimo 5 segundos. As mensagens usam a notação de chave da configuração (`Smtp:Password`).
+- **Intervalo padrão de 60 segundos:** no plano gratuito da brapi os dados já têm atraso de cerca de 15 minutos, então consultas mais frequentes trazem o mesmo preço e consomem a cota de requisições sem ganho real. O mínimo de 5 segundos impede configurações que sobrecarregariam a API.
+- **Cuidado multiplataforma:** o arquivo havia sido criado como `AppSettings.json`. No Windows funciona, mas no Linux/macOS o nome é sensível a maiúsculas e o programa não o encontraria. Renomeado para `appsettings.json` com `git mv`.
 ## Commits
 
 | Commit | Descrição |
@@ -178,3 +200,4 @@ Monitoramento encerrado.
 | `feat: validação das regras dos argumentos` | Preços positivos, venda > compra, ticker em maiúsculas |
 | `refactor: extrai validação de argumentos para classe própria` | Validação movida para `MonitorArguments`; `Program.cs` vira orquestrador |
 | `Fix: Adicionando progresso do documentation.md` | Adicionando comentarios do commit passado (tinha esquecido)
+| `feat: leitura e validação do arquivo de configuração` | Configuração em camadas, validação e rename para inglês |

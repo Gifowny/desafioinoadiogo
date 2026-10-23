@@ -6,6 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AssemblyName>stock-quote-alert</AssemblyName>
+    <UserSecretsId>5b7d6578-5c36-4306-8ff5-20bc827b0bc9</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
