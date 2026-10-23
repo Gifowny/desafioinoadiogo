@@ -47,7 +47,7 @@ if (configErrors.Count > 0)
 Console.WriteLine($"Monitorando {arguments.Ticker} | venda > {arguments.SellPrice} | compra < {arguments.BuyPrice}");
 
 using var httpClient = new HttpClient();
-IQuoteProvider quoteProvider = new BrapiQuoteProvider(httpClient);
+IQuoteProvider quoteProvider = new BrapiQuoteProvider(httpClient, settings.Brapi.Token);
 
 using var cts = new CancellationTokenSource();
 
@@ -60,6 +60,7 @@ Console.CancelKeyPress += (_, e) =>
 using var timer = new PeriodicTimer(TimeSpan.FromSeconds(settings.Monitor.IntervalSeconds));
 
 Console.WriteLine($"Consultando a cada {settings.Monitor.IntervalSeconds}s. Pressione Ctrl+C para encerrar.");
+Console.WriteLine($"Token da brapi: {(string.IsNullOrWhiteSpace(settings.Brapi.Token) ? "não configurado (apenas PETR4, VALE3, MGLU3 e ITUB4)" : "configurado")}");
 
 try
 {
