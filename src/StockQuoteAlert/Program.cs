@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Configuration;
+﻿using System.Net;
+using Microsoft.Extensions.Configuration;
 using StockQuoteAlert;
 
 MonitorArguments arguments;
@@ -71,8 +72,15 @@ try
             Quote quote = await quoteProvider.GetQuoteAsync(arguments.Ticker, cts.Token);
             Console.WriteLine($"{quote.Ticker}: R$ {quote.Price} (negociado em {quote.Time.ToLocalTime():dd/MM/yyyy HH:mm:ss})");
         }
+        catch (HttpRequestException ex) when (ex.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.NotFound)
+        {
+            // erro permanente: tentar de novo não resolve, então encerra
+            Console.Error.WriteLine($"Erro permanente: {ex.Message} Encerrando o monitoramento.");
+            return 1;
+        }
         catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
         {
+            // erro temporário: mostra e tenta de novo na próxima batida do timer
             Console.Error.WriteLine($"Erro ao obter a cotação: {ex.Message}");
         }
     }
