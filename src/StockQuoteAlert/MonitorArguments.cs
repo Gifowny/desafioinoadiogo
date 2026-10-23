@@ -2,7 +2,7 @@ using System.Globalization;
 
 namespace StockQuoteAlert;
 
-public record MonitorArguments(string Ticker, decimal PrecoVenda, decimal PrecoCompra)
+public record MonitorArguments(string Ticker, decimal SellPrice, decimal BuyPrice)
 {
     public static MonitorArguments Parse(string[] args)
     {

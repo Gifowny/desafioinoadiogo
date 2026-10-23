@@ -1,4 +1,5 @@
-﻿using StockQuoteAlert;
+﻿using Microsoft.Extensions.Configuration;
+using StockQuoteAlert;
 
 MonitorArguments arguments;
 
@@ -12,7 +13,38 @@ catch (ArgumentException ex)
     return 1;
 }
 
-Console.WriteLine($"Monitorando {arguments.Ticker} | venda > {arguments.PrecoVenda} | compra < {arguments.PrecoCompra}");
+AppSettings settings;
+
+try
+{
+    IConfiguration configuration = new ConfigurationBuilder()
+        .SetBasePath(AppContext.BaseDirectory)
+        .AddJsonFile("appsettings.json", optional: false)
+        .AddUserSecrets<Program>(optional: true)
+        .AddEnvironmentVariables(prefix: "STOCKALERT_")
+        .Build();
+
+    settings = configuration.Get<AppSettings>() ?? new AppSettings();
+}
+catch (FileNotFoundException)
+{
+    Console.Error.WriteLine("Arquivo appsettings.json não encontrado ao lado do executável.");
+    return 1;
+}
+
+List<string> configErrors = settings.Validate();
+
+if (configErrors.Count > 0)
+{
+    Console.Error.WriteLine("Configuração inválida:");
+    foreach (string error in configErrors)
+    {
+        Console.Error.WriteLine($"  - {error}");
+    }
+    return 1;
+}
+
+Console.WriteLine($"Monitorando {arguments.Ticker} | venda > {arguments.SellPrice} | compra < {arguments.BuyPrice}");
 
 using var httpClient = new HttpClient();
 IQuoteProvider quoteProvider = new BrapiQuoteProvider(httpClient);
@@ -25,9 +57,9 @@ Console.CancelKeyPress += (_, e) =>
     cts.Cancel();
 };
 
-using var timer = new PeriodicTimer(TimeSpan.FromSeconds(10));
+using var timer = new PeriodicTimer(TimeSpan.FromSeconds(settings.Monitor.IntervalSeconds));
 
-Console.WriteLine("Pressione Ctrl+C para encerrar.");
+Console.WriteLine($"Consultando a cada {settings.Monitor.IntervalSeconds}s. Pressione Ctrl+C para encerrar.");
 
 try
 {
@@ -47,7 +79,7 @@ try
 }
 catch (OperationCanceledException)
 {
-    // vazio de proposito*
+    // Ctrl+C pressionado: não é um erro, só saímos do loop
 }
 
 Console.WriteLine("Monitoramento encerrado.");
