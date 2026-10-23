@@ -295,6 +295,25 @@ Monitoramento encerrado.
 - **Achado:** o preço negativo é rejeitado no `TryParse`, pois `NumberStyles.AllowDecimalPoint` não aceita sinal. Com isso, a regra "preços maiores que zero" só é atingida pelo zero.
 - As classes testadas não fazem I/O (rede, e-mail, console), o que permite testá-las sem internet e sem servidor SMTP. Esse foi um dos motivos para separá-las do `Program.cs` nos passos anteriores.
 - **Resultado:** 13 testes, todos passando.
+### Passo 10 — Extras
+
+#### Integração contínua (GitHub Actions)
+
+- Workflow em `.github/workflows/ci.yml`, executado a cada push e pull request na `main`.
+- Etapas: checkout, instalação do .NET 10, `dotnet restore`, `dotnet build --configuration Release` e `dotnet test`.
+- Executa em **Linux** (`ubuntu-latest`), o que confirma que o projeto compila e os testes passam fora do Windows (incluindo a correção do nome `appsettings.json`, sensível a maiúsculas no Linux).
+- Primeira execução: sucesso em 29 segundos.
+#### Logs estruturados
+
+- Substituição de `Console.WriteLine` por `ILogger` (`Microsoft.Extensions.Logging.Console`) durante o monitoramento.
+- Formato de uma linha por mensagem, com data e hora (`dd/MM/yyyy HH:mm:ss`) e nível.
+- Níveis:
+  - `Information`: início, cotações e alertas enviados;
+  - `Warning`: erros temporários de cotação (o programa se recupera);
+  - `Error`: falha no envio de e-mail e erros permanentes da API.
+- *Message templates* (`"{Ticker}: R$ {Price}"`) em vez de interpolação: os valores ficam registrados como campos separados, permitindo filtrar e consultar logs em ferramentas de monitoramento (log estruturado).
+- Mensagens de argumentos e configuração inválidos continuam em `Console.Error`, sem horário: ocorrem antes do início do monitoramento e a mensagem de uso deve aparecer limpa.
+- `ILoggerFactory` declarado com `using`, garantindo que as mensagens pendentes sejam escritas antes do encerramento (o logger de console escreve em segundo plano).
 ## Commits
 
 | Commit | Descrição |

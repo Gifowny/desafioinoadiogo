@@ -1,5 +1,6 @@
 ﻿using System.Net;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using StockQuoteAlert;
 
 MonitorArguments arguments;
@@ -45,12 +46,19 @@ if (configErrors.Count > 0)
     return 1;
 }
 
-Console.WriteLine($"Monitorando {arguments.Ticker} | venda > {arguments.SellPrice} | compra < {arguments.BuyPrice}");
+using ILoggerFactory loggerFactory = LoggerFactory.Create(builder =>
+    builder.AddSimpleConsole(options =>
+    {
+        options.TimestampFormat = "dd/MM/yyyy HH:mm:ss ";
+        options.SingleLine = true;
+    }));
+
+ILogger logger = loggerFactory.CreateLogger("StockQuoteAlert");
 
 using var httpClient = new HttpClient();
 IQuoteProvider quoteProvider = new BrapiQuoteProvider(httpClient, settings.Brapi.Token);
-INotifier notifier = new EmailNotifier(settings.Smtp, settings.Email);              // NOVO
-var evaluator = new AlertEvaluator(arguments.SellPrice, arguments.BuyPrice);       // NOVO
+INotifier notifier = new EmailNotifier(settings.Smtp, settings.Email);
+var evaluator = new AlertEvaluator(arguments.SellPrice, arguments.BuyPrice);
 
 using var cts = new CancellationTokenSource();
 
@@ -62,9 +70,13 @@ Console.CancelKeyPress += (_, e) =>
 
 using var timer = new PeriodicTimer(TimeSpan.FromSeconds(settings.Monitor.IntervalSeconds));
 
-Console.WriteLine($"Consultando a cada {settings.Monitor.IntervalSeconds}s. Pressione Ctrl+C para encerrar.");
-Console.WriteLine($"Token da brapi: {(string.IsNullOrWhiteSpace(settings.Brapi.Token) ? "não configurado (apenas PETR4, VALE3, MGLU3 e ITUB4)" : "configurado")}");
-Console.WriteLine($"Alertas serão enviados para: {settings.Email.To}");                // NOVO
+logger.LogInformation("Monitorando {Ticker} | venda > {SellPrice} | compra < {BuyPrice}",
+    arguments.Ticker, arguments.SellPrice, arguments.BuyPrice);
+logger.LogInformation("Consultando a cada {IntervalSeconds}s. Pressione Ctrl+C para encerrar.",
+    settings.Monitor.IntervalSeconds);
+logger.LogInformation("Token da brapi: {TokenStatus}",
+    string.IsNullOrWhiteSpace(settings.Brapi.Token) ? "não configurado (apenas PETR4, VALE3, MGLU3 e ITUB4)" : "configurado");
+logger.LogInformation("Alertas serão enviados para: {EmailTo}", settings.Email.To);
 
 try
 {
@@ -73,7 +85,8 @@ try
         try
         {
             Quote quote = await quoteProvider.GetQuoteAsync(arguments.Ticker, cts.Token);
-            Console.WriteLine($"{quote.Ticker}: R$ {quote.Price} (negociado em {quote.Time.ToLocalTime():dd/MM/yyyy HH:mm:ss})");
+            logger.LogInformation("{Ticker}: R$ {Price} (negociado em {QuoteTime:dd/MM/yyyy HH:mm:ss})",
+                quote.Ticker, quote.Price, quote.Time.ToLocalTime());
 
             AlertType alert = evaluator.Evaluate(quote.Price);
 
@@ -85,23 +98,24 @@ try
                 try
                 {
                     await notifier.SendAsync(subject, body, cts.Token);
-                    Console.WriteLine($"Alerta de {alertName} enviado por e-mail.");
+                    logger.LogInformation("Alerta de {AlertName} enviado por e-mail.", alertName);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     evaluator.Rearm();
-                    Console.Error.WriteLine($"Falha ao enviar o alerta de {alertName}: {ex.Message} Nova tentativa na próxima consulta.");
+                    logger.LogError("Falha ao enviar o alerta de {AlertName}: {ErrorMessage} Nova tentativa na próxima consulta.",
+                        alertName, ex.Message);
                 }
             }
         }
         catch (HttpRequestException ex) when (ex.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.NotFound)
         {
-            Console.Error.WriteLine($"Erro permanente: {ex.Message} Encerrando o monitoramento.");
+            logger.LogError("Erro permanente: {ErrorMessage} Encerrando o monitoramento.", ex.Message);
             return 1;
         }
         catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
         {
-            Console.Error.WriteLine($"Erro ao obter a cotação: {ex.Message}");
+            logger.LogWarning("Erro ao obter a cotação: {ErrorMessage}", ex.Message);
         }
     }
     while (await timer.WaitForNextTickAsync(cts.Token));
@@ -111,6 +125,6 @@ catch (OperationCanceledException)
     // Ctrl+C pressionado: não é um erro, só saímos do loop
 }
 
-Console.WriteLine("Monitoramento encerrado.");
+logger.LogInformation("Monitoramento encerrado.");
 
 return 0;
