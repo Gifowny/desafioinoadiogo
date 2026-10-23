@@ -223,6 +223,34 @@ Monitoramento encerrado.
   - `SecureSocketOptions.Auto` escolhe a criptografia pela porta (STARTTLS na 587, SSL na 465), dispensando um campo extra de configuração.
 - Testado com o Gmail usando senha de app (exige verificação em duas etapas na conta).
 - **Erro encontrado:** a interface foi declarada inicialmente com retorno `Task<Task>` em vez de `Task`, e a implementação não satisfazia o contrato (CS0738). `Task` sozinho representa uma operação assíncrona sem valor de retorno.
+### Passo 7 — Lógica de alerta com estado
+
+- **O comportamento foi decidido antes do código**, a partir de uma sequência de preços hipotética (venda 58.30, compra 58.10):
+
+| Consulta | Preço | Zona | E-mail |
+|---|---|---|---|
+| 1 | 58.20 | dentro | não |
+| 2 | 58.35 | acima | venda |
+| 3 | 58.40 | acima | não |
+| 4 | 58.38 | acima | não |
+| 5 | 58.25 | dentro | não (rearma) |
+| 6 | 58.32 | acima | venda |
+| 7 | 58.05 | abaixo | compra |
+| 8 | 58.30 | dentro | não |
+
+- **Raciocínio:** a primeira versão da regra enviava e-mail em toda consulta fora da faixa. Isso geraria dezenas de e-mails idênticos enquanto o preço permanecesse acima ou abaixo (cerca de 240 em uma tarde, com consultas a cada 60s), sem nenhuma informação nova após o primeiro. A regra foi revista: o e-mail avisa sobre uma **mudança**, não sobre uma situação que continua.
+- **Regra final:** o programa guarda a última zona (dentro, acima da venda ou abaixo da compra) e envia e-mail sempre que a zona muda para acima ou abaixo. Voltar para dentro da faixa não gera e-mail, apenas rearma o alerta.
+- **Decisões de borda:**
+  - comparações estritas (`>` e `<`), conforme o enunciado ("maior que" / "menor que"); um preço exatamente igual ao de referência conta como dentro da faixa;
+  - saída da faixa após retorno (consulta 6) gera novo e-mail, pois representa uma nova oportunidade;
+  - mudança direta de acima para abaixo (consulta 7) gera o e-mail da nova zona;
+  - a zona inicial é "dentro": se a primeira consulta já estiver fora da faixa, o e-mail é enviado imediatamente.
+- **Risco conhecido:** oscilação do preço na borda (ex.: 58.29 ↔ 58.31) geraria um e-mail a cada saída. Mitigações possíveis: histerese ou cooldown (avaliadas como extras).
+- Implementação em `AlertEvaluator.cs`:
+  - `enum PriceZone` (`Inside`, `AboveSell`, `BelowBuy`) e `enum AlertType` (`None`, `Sell`, `Buy`): tipos fechados impedem estados inválidos;
+  - campo privado `_lastZone` guarda o estado entre as consultas;
+  - a classe não faz I/O (não busca cotação, não envia e-mail, não imprime), o que a torna testável de forma isolada.
+- Uma tentativa intermediária com `switch` usava padrões relacionais com variáveis (`> sellPrice`), que o C# aceita apenas com constantes. Mantida a versão com `if / else if / else`, mais legível. A simulação manual da tabela confirmou o comportamento esperado.
 ## Commits
 
 | Commit | Descrição |
@@ -238,3 +266,4 @@ Monitoramento encerrado.
 | `feat: token da brapi e mensagens de erro por status HTTP` | Token no cabeçalho e mensagens amigáveis |
 | `feat: encerra o monitoramento em erros permanentes da API` | 401/404 encerram; erros temporários continuam |
 | `feat: envio de e-mail via SMTP com MailKit` | `INotifier` + `EmailNotifier` |
+| `feat: avaliação de alertas por mudança de estado` | `AlertEvaluator` com `PriceZone` e `AlertType` |
