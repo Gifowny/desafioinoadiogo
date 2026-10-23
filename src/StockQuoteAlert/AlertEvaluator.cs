@@ -38,9 +38,12 @@ public class AlertEvaluator(decimal sellPrice, decimal buyPrice)
         }
         else
         {
-            // voltar para a faixa só rearma o alerta, não manda e-mail
             _lastZone = PriceZone.Inside;
             return AlertType.None;
         }
+    }
+    public void Rearm()
+    {
+        _lastZone = PriceZone.Inside;
     }
 }

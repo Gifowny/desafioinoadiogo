@@ -44,10 +44,13 @@ if (configErrors.Count > 0)
     }
     return 1;
 }
-INotifier notifier = new EmailNotifier(settings.Smtp, settings.Email);
+
+Console.WriteLine($"Monitorando {arguments.Ticker} | venda > {arguments.SellPrice} | compra < {arguments.BuyPrice}");
 
 using var httpClient = new HttpClient();
 IQuoteProvider quoteProvider = new BrapiQuoteProvider(httpClient, settings.Brapi.Token);
+INotifier notifier = new EmailNotifier(settings.Smtp, settings.Email);              // NOVO
+var evaluator = new AlertEvaluator(arguments.SellPrice, arguments.BuyPrice);       // NOVO
 
 using var cts = new CancellationTokenSource();
 
@@ -61,6 +64,7 @@ using var timer = new PeriodicTimer(TimeSpan.FromSeconds(settings.Monitor.Interv
 
 Console.WriteLine($"Consultando a cada {settings.Monitor.IntervalSeconds}s. Pressione Ctrl+C para encerrar.");
 Console.WriteLine($"Token da brapi: {(string.IsNullOrWhiteSpace(settings.Brapi.Token) ? "não configurado (apenas PETR4, VALE3, MGLU3 e ITUB4)" : "configurado")}");
+Console.WriteLine($"Alertas serão enviados para: {settings.Email.To}");                // NOVO
 
 try
 {
@@ -70,16 +74,33 @@ try
         {
             Quote quote = await quoteProvider.GetQuoteAsync(arguments.Ticker, cts.Token);
             Console.WriteLine($"{quote.Ticker}: R$ {quote.Price} (negociado em {quote.Time.ToLocalTime():dd/MM/yyyy HH:mm:ss})");
+
+            AlertType alert = evaluator.Evaluate(quote.Price);
+
+            if (alert != AlertType.None)
+            {
+                var (subject, body) = AlertMessage.Build(alert, quote, arguments);
+                string alertName = alert == AlertType.Sell ? "VENDA" : "COMPRA";
+
+                try
+                {
+                    await notifier.SendAsync(subject, body, cts.Token);
+                    Console.WriteLine($"Alerta de {alertName} enviado por e-mail.");
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    evaluator.Rearm();
+                    Console.Error.WriteLine($"Falha ao enviar o alerta de {alertName}: {ex.Message} Nova tentativa na próxima consulta.");
+                }
+            }
         }
         catch (HttpRequestException ex) when (ex.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.NotFound)
         {
-            // erro permanente: tentar de novo não resolve, então encerra
             Console.Error.WriteLine($"Erro permanente: {ex.Message} Encerrando o monitoramento.");
             return 1;
         }
         catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
         {
-            // erro temporário: mostra e tenta de novo na próxima batida do timer
             Console.Error.WriteLine($"Erro ao obter a cotação: {ex.Message}");
         }
     }
