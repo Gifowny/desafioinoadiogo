@@ -275,6 +275,26 @@ Monitoramento encerrado.
 | Venda sem repetição | `PETR4 58.50 58.20` | um único e-mail de venda; nas consultas seguintes (58.84 → 58.79, ainda acima de 58.50) nenhum novo envio |
 
 - **Observação:** com o token configurado, o horário da cotação avançou a cada minuto, próximo do horário real, bem abaixo do atraso de ~15 minutos do acesso sem cadastro.
+---
+
+## Fase 3 — Extras e entrega
+
+### Passo 9 — Testes unitários
+
+- Projeto `tests/StockQuoteAlert.Tests` com **xUnit**, adicionado à solution e referenciando o projeto principal. Execução: `dotnet test`.
+- Testes no padrão **Arrange / Act / Assert**, com nomes que descrevem o comportamento esperado.
+- `AlertEvaluatorTests` (4 testes):
+  - a **tabela de decisão** do Passo 7 inteira, convertida em uma sequência de asserções;
+  - primeira consulta já abaixo da compra dispara alerta de compra (zona inicial "dentro");
+  - preço exatamente igual à referência não dispara alerta (comparação estrita);
+  - sem `Rearm()` o alerta não se repete; com `Rearm()` ele é disparado de novo.
+- `MonitorArgumentsTests` (9 testes):
+  - argumentos válidos são convertidos e o ticker fica em maiúsculas;
+  - `[Theory]` com 7 entradas inválidas (texto, vírgula, venda menor ou igual à compra, zero, negativo), verificando `ArgumentException`;
+  - quantidade errada de argumentos, verificando também que a mensagem é a de uso.
+- **Achado:** o preço negativo é rejeitado no `TryParse`, pois `NumberStyles.AllowDecimalPoint` não aceita sinal. Com isso, a regra "preços maiores que zero" só é atingida pelo zero.
+- As classes testadas não fazem I/O (rede, e-mail, console), o que permite testá-las sem internet e sem servidor SMTP. Esse foi um dos motivos para separá-las do `Program.cs` nos passos anteriores.
+- **Resultado:** 13 testes, todos passando.
 ## Commits
 
 | Commit | Descrição |
@@ -293,3 +313,5 @@ Monitoramento encerrado.
 | `feat: avaliação de alertas por mudança de estado` | `AlertEvaluator` com `PriceZone` e `AlertType` |
 | `feat: montagem das mensagens de alerta` | `AlertMessage` com formatação pt-BR |
 | `feat: integra avaliação de alertas e envio de e-mail no monitoramento` | Loop completo com rearme em falha de envio |
+| `test: testes unitários do AlertEvaluator` | Projeto xUnit e 4 testes da lógica de alerta |
+| `test: testes unitários do MonitorArguments` | 9 testes de validação de entrada |
