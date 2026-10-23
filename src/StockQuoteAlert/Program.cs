@@ -44,8 +44,7 @@ if (configErrors.Count > 0)
     }
     return 1;
 }
-
-Console.WriteLine($"Monitorando {arguments.Ticker} | venda > {arguments.SellPrice} | compra < {arguments.BuyPrice}");
+INotifier notifier = new EmailNotifier(settings.Smtp, settings.Email);
 
 using var httpClient = new HttpClient();
 IQuoteProvider quoteProvider = new BrapiQuoteProvider(httpClient, settings.Brapi.Token);

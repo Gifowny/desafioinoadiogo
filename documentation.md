@@ -237,3 +237,4 @@ Monitoramento encerrado.
 | `chore: configura user-secrets para dados sensíveis` | `UserSecretsId` no projeto |
 | `feat: token da brapi e mensagens de erro por status HTTP` | Token no cabeçalho e mensagens amigáveis |
 | `feat: encerra o monitoramento em erros permanentes da API` | 401/404 encerram; erros temporários continuam |
+| `feat: envio de e-mail via SMTP com MailKit` | `INotifier` + `EmailNotifier` |
