@@ -251,6 +251,30 @@ Monitoramento encerrado.
   - campo privado `_lastZone` guarda o estado entre as consultas;
   - a classe não faz I/O (não busca cotação, não envia e-mail, não imprime), o que a torna testável de forma isolada.
 - Uma tentativa intermediária com `switch` usava padrões relacionais com variáveis (`> sellPrice`), que o C# aceita apenas com constantes. Mantida a versão com `if / else if / else`, mais legível. A simulação manual da tabela confirmou o comportamento esperado.
+### Passo 8 — Integração
+
+- **Montagem das mensagens** em `AlertMessage.Build`, que devolve uma tupla `(Subject, Body)`:
+  - o assunto traz ativo, preço atual e referência (ex.: "Alerta de VENDA: PETR4 a R$ 58,88 (acima de R$ 58,50)"), para o alerta ser compreendido sem abrir o e-mail;
+  - corpo com preço atual, referência, horário da cotação e aviso de que as cotações podem ter atraso e não constituem recomendação de investimento;
+  - moeda e data formatadas com cultura **pt-BR fixa** (`string.Create(PtBr, ...)`). Com o `:C` padrão, o formato dependeria do idioma da máquina (em uma máquina em inglês sairia `$58.88`);
+  - `AlertType.None` e valores desconhecidos lançam exceção, já que não há e-mail a montar.
+- **Erro encontrado:** `string.Create` exige que todos os trechos concatenados sejam strings interpoladas (`$"..."`); trechos sem `$` impediam a compilação.
+- **Integração no loop:** a cada cotação, o `AlertEvaluator` decide se a zona mudou; havendo alerta, a mensagem é montada e enviada pelo `INotifier`.
+- **Decisão — falha no envio:** o avaliador atualiza o estado antes do envio; se o e-mail falhasse, o alerta seria perdido (na consulta seguinte a zona seria a mesma). Opções consideradas: aceitar a perda, rearmar o avaliador ou criar uma fila de reenvio. Escolhido **rearmar** com `AlertEvaluator.Rearm()`, que volta o estado para "dentro": se o preço continuar fora da faixa, o envio é tentado novamente na próxima consulta; se já tiver voltado, nada é enviado, pois o aviso deixaria de ser verdadeiro. A solução reaproveita a regra de mudança de estado sem criar um mecanismo novo.
+- O `catch` do envio captura qualquer exceção exceto cancelamento, pois o MailKit lança diversos tipos (autenticação, conexão, protocolo) e todos recebem o mesmo tratamento.
+- **Limitação conhecida:** uma falha permanente de e-mail (senha errada) gera uma nova tentativa e uma mensagem de erro a cada consulta.
+
+**Testes ponta a ponta** (pregão aberto, PETR4 cotada a R$ 58,88; intervalo reduzido para 10s via `STOCKALERT_Monitor__IntervalSeconds`, sem alterar o arquivo):
+
+| Cenário | Comando | Resultado |
+|---|---|---|
+| Sem alerta | `PETR4 100 1` | apenas cotações |
+| Venda | `PETR4 58.50 58.20` | e-mail de venda na primeira consulta |
+| Compra | `PETR4 59.20 59.00` | e-mail de compra na primeira consulta, sem repetição na seguinte |
+| Falha de envio | senha inválida via `STOCKALERT_Smtp__Password` | falha exibida e nova tentativa a cada consulta (rearme) |
+| Venda sem repetição | `PETR4 58.50 58.20` | um único e-mail de venda; nas consultas seguintes (58.84 → 58.79, ainda acima de 58.50) nenhum novo envio |
+
+- **Observação:** com o token configurado, o horário da cotação avançou a cada minuto, próximo do horário real, bem abaixo do atraso de ~15 minutos do acesso sem cadastro.
 ## Commits
 
 | Commit | Descrição |
@@ -267,3 +291,5 @@ Monitoramento encerrado.
 | `feat: encerra o monitoramento em erros permanentes da API` | 401/404 encerram; erros temporários continuam |
 | `feat: envio de e-mail via SMTP com MailKit` | `INotifier` + `EmailNotifier` |
 | `feat: avaliação de alertas por mudança de estado` | `AlertEvaluator` com `PriceZone` e `AlertType` |
+| `feat: montagem das mensagens de alerta` | `AlertMessage` com formatação pt-BR |
+| `feat: integra avaliação de alertas e envio de e-mail no monitoramento` | Loop completo com rearme em falha de envio |
