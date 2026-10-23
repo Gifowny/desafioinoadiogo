@@ -190,6 +190,39 @@ Monitoramento encerrado.
 - **Validação** em `AppSettings.Validate()`, que devolve uma **lista** de erros em vez de lançar exceção no primeiro problema, para que o usuário veja todos os campos a corrigir de uma vez. Regras: e-mail de destino com `@`, host e usuário preenchidos, porta entre 1 e 65535, senha preenchida e intervalo de no mínimo 5 segundos. As mensagens usam a notação de chave da configuração (`Smtp:Password`).
 - **Intervalo padrão de 60 segundos:** no plano gratuito da brapi os dados já têm atraso de cerca de 15 minutos, então consultas mais frequentes trazem o mesmo preço e consomem a cota de requisições sem ganho real. O mínimo de 5 segundos impede configurações que sobrecarregariam a API.
 - **Cuidado multiplataforma:** o arquivo havia sido criado como `AppSettings.json`. No Windows funciona, mas no Linux/macOS o nome é sensível a maiúsculas e o programa não o encontraria. Renomeado para `appsettings.json` com `git mv`.
+- **Segredos com user-secrets:** a senha de app do Gmail (`Smtp:Password`) e o token da brapi (`Brapi:Token`) são armazenados com `dotnet user-secrets`, em um arquivo na pasta do usuário, fora do repositório. O `.csproj` recebe apenas o `UserSecretsId`, que não é sensível. Um arquivo `appsettings.example.json` foi considerado e descartado: o próprio `appsettings.json` é versionado sem segredos e serve de modelo.
+- **Token da brapi no provedor:** o `BrapiQuoteProvider` passou a receber o token (opcional) e enviá-lo no cabeçalho `Authorization: Bearer`. A chamada foi dividida em etapas (`HttpRequestMessage` → `SendAsync` → checagem de status → `ReadFromJsonAsync`) para permitir o cabeçalho e o tratamento de erros próprio.
+- **Bug encontrado:** o token estava salvo e era lido da configuração, mas o provedor era criado sem ele (`new BrapiQuoteProvider(httpClient)`). Como o parâmetro é opcional, o compilador não acusou a ausência. Corrigido passando `settings.Brapi.Token`.
+- Na inicialização, o programa informa se o token está configurado, sem exibir o valor.
+- **Mensagens por status HTTP** com `switch` expression: 401 (acesso negado, orienta a configurar o token), 404 (ticker não encontrado), 429 (limite de requisições) e genérica com código e `ReasonPhrase` para os demais.
+- **Erros permanentes x temporários:**
+
+| Situação | Comportamento | Código de saída |
+|---|---|---|
+| Erro temporário (rede, 5xx, 429) | exibe e tenta novamente no próximo intervalo | continua |
+| Erro permanente (401, 404) | exibe e encerra | 1 |
+| Ctrl+C | encerra de forma limpa | 0 |
+
+  Erros permanentes não se resolvem com novas tentativas; insistir geraria um erro a cada intervalo sem que ninguém percebesse. Isso vale também para um token que expire durante uma execução longa. Os `catch` estão ordenados do mais específico para o mais genérico.
+
+**Testes manuais:**
+
+| Cenário | Resultado |
+|---|---|
+| `XXXX9` (ticker inexistente) | encerra com "Ticker 'XXXX9' não encontrado" |
+| `BBAS3` com token inválido via `STOCKALERT_Brapi__Token` | encerra com acesso negado (confirma que variáveis de ambiente sobrescrevem os user-secrets) |
+| `BBAS3` com token válido | cotação exibida |
+| `PETR4` | cotação exibida |
+| Wi-Fi desligado durante a execução | erro exibido, monitoramento continua e se recupera |
+### Passo 6 — Envio de e-mail
+
+- Biblioteca **MailKit**, recomendada pela Microsoft no lugar do `System.Net.Mail.SmtpClient`, que não é indicado para código novo.
+- Interface `INotifier` com `Task SendAsync(string subject, string body, CancellationToken)`. O notificador é **genérico**: envia um assunto e um corpo sem conhecer ativos ou alertas. Montar o texto do alerta é responsabilidade de outra parte do programa, o que permite trocar o canal (por exemplo, Telegram) sem alterar a lógica.
+- Implementação `EmailNotifier`, que recebe as seções `Smtp` e `Email` da configuração pelo construtor (injeção de dependência):
+  - remetente exibido como "Stock Quote Alert", usando a conta `Smtp:Username`;
+  - `SecureSocketOptions.Auto` escolhe a criptografia pela porta (STARTTLS na 587, SSL na 465), dispensando um campo extra de configuração.
+- Testado com o Gmail usando senha de app (exige verificação em duas etapas na conta).
+- **Erro encontrado:** a interface foi declarada inicialmente com retorno `Task<Task>` em vez de `Task`, e a implementação não satisfazia o contrato (CS0738). `Task` sozinho representa uma operação assíncrona sem valor de retorno.
 ## Commits
 
 | Commit | Descrição |
@@ -201,3 +234,6 @@ Monitoramento encerrado.
 | `refactor: extrai validação de argumentos para classe própria` | Validação movida para `MonitorArguments`; `Program.cs` vira orquestrador |
 | `Fix: Adicionando progresso do documentation.md` | Adicionando comentarios do commit passado (tinha esquecido)
 | `feat: leitura e validação do arquivo de configuração` | Configuração em camadas, validação e rename para inglês |
+| `chore: configura user-secrets para dados sensíveis` | `UserSecretsId` no projeto |
+| `feat: token da brapi e mensagens de erro por status HTTP` | Token no cabeçalho e mensagens amigáveis |
+| `feat: encerra o monitoramento em erros permanentes da API` | 401/404 encerram; erros temporários continuam |
