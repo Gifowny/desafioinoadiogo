@@ -314,6 +314,15 @@ Monitoramento encerrado.
 - *Message templates* (`"{Ticker}: R$ {Price}"`) em vez de interpolação: os valores ficam registrados como campos separados, permitindo filtrar e consultar logs em ferramentas de monitoramento (log estruturado).
 - Mensagens de argumentos e configuração inválidos continuam em `Console.Error`, sem horário: ocorrem antes do início do monitoramento e a mensagem de uso deve aparecer limpa.
 - `ILoggerFactory` declarado com `using`, garantindo que as mensagens pendentes sejam escritas antes do encerramento (o logger de console escreve em segundo plano).
+
+#### Histerese contra oscilação na borda
+
+- **Problema** (identificado no Passo 7): com o preço oscilando em torno da referência (ex.: 58.29 ↔ 58.31 com venda em 58.30), cada saída da faixa gerava um novo e-mail.
+- **Alternativas consideradas:** histerese (margem de preço para rearmar) e cooldown (intervalo mínimo entre e-mails). Escolhida a **histerese**, por atacar diretamente a causa (a borda), manter a regra baseada apenas em preço e o `AlertEvaluator` testável sem dependência de relógio.
+- **Regra:** após um alerta, voltar para dentro da faixa só rearma o alerta quando o preço se afasta da referência por uma margem percentual: abaixo de `venda × (1 − margem)` para a venda e acima de `compra × (1 + margem)` para a compra. A margem afeta apenas o rearme da mesma zona; a passagem para a zona oposta continua disparando imediatamente.
+- **Problema encontrado pelos testes:** com faixas mais estreitas que a margem (ex.: 58.10–58.30 com 0,5%), a linha de rearme da venda ficava abaixo do preço de compra, e o alerta de venda só voltaria após um alerta de compra. Opções avaliadas: aceitar e documentar, limitar a linha de rearme ou recusar a configuração. **Decisão:** limitar a linha de rearme ao **ponto médio da faixa** (`Math.Max`/`Math.Min`), o que mantém o comportamento original em faixas largas e garante o rearme em faixas estreitas, sem restringir o uso.
+- Configurável em `Monitor:HysteresisPercent` (padrão 0,5%, cerca de 5 vezes a variação por minuto observada na PETR4; validado entre 0 e 10). Com 0, o comportamento é idêntico ao original, e os testes anteriores continuaram passando sem alteração.
+- Novos testes: histerese em faixa larga (rearme pela margem), em faixa estreita (rearme no meio da faixa) e a garantia de que a zona oposta não é atrasada. Total: 16 testes.
 ## Commits
 
 | Commit | Descrição |

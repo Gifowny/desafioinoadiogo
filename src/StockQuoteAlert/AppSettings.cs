@@ -41,6 +41,11 @@ public class AppSettings
             errors.Add("Monitor:IntervalSeconds deve ser de no mínimo 5 segundos.");
         }
 
+        if (Monitor.HysteresisPercent < 0 || Monitor.HysteresisPercent > 10)
+        {
+            errors.Add("Monitor:HysteresisPercent deve estar entre 0 e 10.");
+        }
+
         return errors;
     }
 }
@@ -66,4 +71,5 @@ public class BrapiSettings
 public class MonitorSettings
 {
     public int IntervalSeconds { get; set; } = 60;
+    public decimal HysteresisPercent { get; set; } = 0.5m;
 }

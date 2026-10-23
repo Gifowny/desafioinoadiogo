@@ -58,7 +58,7 @@ ILogger logger = loggerFactory.CreateLogger("StockQuoteAlert");
 using var httpClient = new HttpClient();
 IQuoteProvider quoteProvider = new BrapiQuoteProvider(httpClient, settings.Brapi.Token);
 INotifier notifier = new EmailNotifier(settings.Smtp, settings.Email);
-var evaluator = new AlertEvaluator(arguments.SellPrice, arguments.BuyPrice);
+var evaluator = new AlertEvaluator(arguments.SellPrice, arguments.BuyPrice, settings.Monitor.HysteresisPercent);
 
 using var cts = new CancellationTokenSource();
 
@@ -74,6 +74,7 @@ logger.LogInformation("Monitorando {Ticker} | venda > {SellPrice} | compra < {Bu
     arguments.Ticker, arguments.SellPrice, arguments.BuyPrice);
 logger.LogInformation("Consultando a cada {IntervalSeconds}s. Pressione Ctrl+C para encerrar.",
     settings.Monitor.IntervalSeconds);
+logger.LogInformation("Margem de rearme (histerese): {HysteresisPercent}%", settings.Monitor.HysteresisPercent);
 logger.LogInformation("Token da brapi: {TokenStatus}",
     string.IsNullOrWhiteSpace(settings.Brapi.Token) ? "não configurado (apenas PETR4, VALE3, MGLU3 e ITUB4)" : "configurado");
 logger.LogInformation("Alertas serão enviados para: {EmailTo}", settings.Email.To);
